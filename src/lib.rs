@@ -81,6 +81,8 @@ pub fn epoll() -> nix::Result<()> {
                             continue;
                         }
 
+                        // edit epoll watch list
+                        // wait for client_fd gets writable status
                         let mut ev = EpollEvent::new(EpollFlags::EPOLLOUT, client_fd as u64);
                         epoll_ctl(epfd, EpollOp::EpollCtlMod, client_fd, &mut ev)?;
 
@@ -88,14 +90,18 @@ pub fn epoll() -> nix::Result<()> {
                         break;
                     }
                 } else if events == events & EpollFlags::EPOLLOUT && state == State::Write {
+                    // ignore keep-alive configuration & close connection
                     let buf = "HTTP/1.1 200 Ok\nConnection: clone\nContent-Type: text/plain\n\nha?\n\n";
                     let size = send(client_fd, buf.as_bytes(), MsgFlags::empty())?;
                     println!("    send: buf: {:?}, size: {}", buf, size);
 
+                    // remove client_fd from epoll watch list
                     epoll_ctl(epfd, EpollOp::EpollCtlDel, client_fd, &mut epoll_events[i])?;
 
+                    // remove client_fd from client list
                     clients.remove(&client_fd);
 
+                    // close TCP connection
                     shutdown(client_fd, Shutdown::Both)?;
                     close(client_fd)?;
                 }
